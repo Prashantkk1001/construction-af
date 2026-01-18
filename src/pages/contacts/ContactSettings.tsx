@@ -62,7 +62,7 @@ const ContactSettings = () => {
         const token = localStorage.getItem("adminToken");
         if (!token) return;
 
-        const res = await fetch("http://localhost:5000/api/admin/contact", {
+        const res = await fetch("https://construction-backend-wtf2.onrender.com/api/admin/contact", {
           headers: { Authorization: `Bearer ${token}` },
         });
 
@@ -120,7 +120,7 @@ const ContactSettings = () => {
       const token = localStorage.getItem("adminToken");
       if (!token) throw new Error("No token");
 
-      const res = await fetch("http://localhost:5000/api/admin/contact", {
+      const res = await fetch("https://construction-backend-wtf2.onrender.com/api/admin/contact", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
