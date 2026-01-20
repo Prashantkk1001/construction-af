@@ -91,7 +91,7 @@ const Login = () => {
             <span className="text-white text-3xl font-bold">RK</span>
           </div>
           <h1 className="text-3xl font-bold text-gray-800 mb-2">
-            Admin Login
+           RK Construction Login
           </h1>
           <p className="text-gray-600 text-sm font-medium">
             Secure access to RK Construction Company
