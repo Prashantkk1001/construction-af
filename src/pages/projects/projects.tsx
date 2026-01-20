@@ -70,25 +70,39 @@ const ProjectPage = () => {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => setData({ ...data, [e.target.name]: e.target.value as any });
 
-  const handleImagesUpload = async (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    if (!e.target.files) return;
+  const handleImagesUpload = async (e) => {
+  if (!e.target.files) return;
+  
+  setUploading(true);
+  const formData = new FormData();
+  Array.from(e.target.files).forEach(f => formData.append("images", f));
+  
+  try {
+    // 2 min timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000);
     
-    setUploading(true);
-    const formData = new FormData();
-    Array.from(e.target.files).forEach(f => formData.append("images", f));
+    const res = await api.post("/admin/upload/images", formData, {
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
     
-    try {
-      const res = await api.post("/admin/upload/images", formData);
-      setData(prev => ({ ...prev, images: [...prev.images, ...res.data.urls] }));
-    } catch (error) {
-      alert("Image upload failed");
-    } finally {
-      setUploading(false);
-      e.target.value = ""; // Reset file input
+    console.log('✅ Upload done:', res.data);
+    setData(prev => ({ ...prev, images: [...prev.images, ...res.data.urls] }));
+  } catch (error) {
+    clearTimeout(timeout);
+    if (error.name === 'AbortError') {
+      alert('Upload timeout - try smaller file (Render free tier slow)');
+    } else {
+      alert('Upload failed: ' + (error.response?.data?.error || 'Try again'));
     }
-  };
+  } finally {
+    setUploading(false);
+    e.target.value = "";
+  }
+};
+
+
 
   const removeImage = (i: number) =>
     setData(p => ({ ...p, images: p.images.filter((_, x) => x !== i) }));
@@ -253,7 +267,7 @@ const ProjectPage = () => {
                   {project.images[0] && (
                     <div className="relative mb-4 h-40 sm:h-48 rounded-2xl overflow-hidden bg-gray-100">
                       <img
-                        src={project.images[0]}
+                        src={`https://construction-backend-wtf2.onrender.com${project.images[0]}`}
                         alt={project.title}
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                       />
@@ -427,7 +441,7 @@ const ProjectPage = () => {
                   {data.images.map((img, i) => (
                     <div key={i} className="relative group">
                       <img
-                        src={img}
+                        src={`https://construction-backend-wtf2.onrender.com${img}`}
                         alt={`Preview ${i + 1}`}
                         className="w-full h-28 sm:h-32 object-cover rounded-2xl shadow-md group-hover:shadow-xl transition-all"
                       />

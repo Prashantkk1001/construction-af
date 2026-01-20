@@ -32,6 +32,7 @@ const Login = () => {
       );
 
       localStorage.setItem("adminToken", res.data.token);
+
       navigate("/admin/dashboard", { replace: true });
     } catch (err: any) {
       setError(err.response?.data?.message || "Invalid email or password");

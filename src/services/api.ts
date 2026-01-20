@@ -10,6 +10,7 @@ api.interceptors.request.use(
     const token = localStorage.getItem("adminToken");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+
     }
     return config;
   },
