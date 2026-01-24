@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Plus, Edit, ArrowLeft, Save, X, Trash, Image, MapPin } from "lucide-react";
 import api from "../../services/api";
 
-/* ================= TYPES ================= */
 type Section =
   | "Residential"
   | "Interior"
@@ -22,7 +21,9 @@ interface Project {
 
 type Mode = "section" | "list" | "form";
 
-/* ================= SECTIONS ================= */
+const BACKEND_URL = "https://construction-backend-wtf2.onrender.com"; // ✅ Your backend port
+ // ✅ CHANGE TO YOUR BACKEND PORT
+
 const SECTIONS: Section[] = [
   "Residential",
   "Interior", 
@@ -50,6 +51,11 @@ const ProjectPage = () => {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
 
+  // ✅ MISSING handleChange FUNCTION
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => setData({ ...data, [e.target.name]: e.target.value as any });
+
   useEffect(() => {
     if (mode === "list" && currentSection) fetchProjects();
   }, [mode, currentSection]);
@@ -58,6 +64,7 @@ const ProjectPage = () => {
     setLoading(true);
     try {
       const res = await api.get(`/admin/projects?section=${currentSection}`);
+      console.log("📋 Fetched projects:", res.data); // DEBUG
       setProjects(res.data);
     } catch (error) {
       console.error("Fetch projects error:", error);
@@ -66,43 +73,38 @@ const ProjectPage = () => {
     }
   };
 
-  const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
-  ) => setData({ ...data, [e.target.name]: e.target.value as any });
-
-  const handleImagesUpload = async (e) => {
-  if (!e.target.files) return;
-  
-  setUploading(true);
-  const formData = new FormData();
-  Array.from(e.target.files).forEach(f => formData.append("images", f));
-  
-  try {
-    // 2 min timeout
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 120000);
+  // ✅ FIXED handleImagesUpload
+  const handleImagesUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    if (!e.target.files) return;
     
-    const res = await api.post("/admin/upload/images", formData, {
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
+    setUploading(true);
+    const formData = new FormData();
+    Array.from(e.target.files).forEach(f => formData.append("images", f));
     
-    console.log('✅ Upload done:', res.data);
-    setData(prev => ({ ...prev, images: [...prev.images, ...res.data.urls] }));
-  } catch (error) {
-    clearTimeout(timeout);
-    if (error.name === 'AbortError') {
-      alert('Upload timeout - try smaller file (Render free tier slow)');
-    } else {
-      alert('Upload failed: ' + (error.response?.data?.error || 'Try again'));
+    try {
+      const res = await api.post("/admin/upload/images", formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      
+      console.log("✅ Upload response:", res.data); // DEBUG
+      
+      const fullImageUrls = (res.data.urls || [res.data.url] || []).map((url: string) => 
+        url.startsWith('http') ? url : `${BACKEND_URL}${url.startsWith('/') ? '' : '/'}${url}`
+      );
+      
+      console.log("🔗 Full URLs:", fullImageUrls); // DEBUG
+      
+      setData(prev => ({ ...prev, images: [...prev.images, ...fullImageUrls] }));
+    } catch (error: any) {
+      console.error("❌ Upload error:", error.response?.data || error);
+      alert("Image upload failed");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
     }
-  } finally {
-    setUploading(false);
-    e.target.value = "";
-  }
-};
-
-
+  };
 
   const removeImage = (i: number) =>
     setData(p => ({ ...p, images: p.images.filter((_, x) => x !== i) }));
@@ -151,45 +153,74 @@ const ProjectPage = () => {
   };
 
   const editProject = (project: Project) => {
-    setData(project);
+    const projectWithFullUrls = {
+      ...project,
+      images: (project.images || []).map((url: string) => 
+        url.startsWith('http') ? url : `${BACKEND_URL}${url.startsWith('/') ? '' : '/'}${url}`
+      )
+    };
+    setData(projectWithFullUrls);
     setCurrentId(project._id!);
     setMode("form");
   };
+
+  const getImageUrl = (imagePath: string) => {
+  if (!imagePath) return '';
+  
+  console.log("🖼️ Raw path:", imagePath);
+  
+  // Fix broken "undefined" paths from database
+  let cleanPath = imagePath;
+  if (imagePath.includes('undefined/uploads')) {
+    cleanPath = imagePath.replace(/\/undefined\/uploads\//, '/uploads/');
+    console.log("🔧 Fixed undefined path:", cleanPath);
+  }
+  
+  // Ensure full URL
+  if (cleanPath.startsWith('http')) {
+    return cleanPath;
+  }
+  
+  return `${BACKEND_URL}${cleanPath.startsWith('/') ? '' : '/'}${cleanPath}`;
+};
+
+  // ... REST OF YOUR JSX REMAINS EXACTLY SAME (section, list, form sections)
+  // Copy the JSX from your previous working version - only functions above are fixed
 
   /* ================= SECTION SELECTION ================= */
   if (mode === "section") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 p-4 sm:p-6">
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black bg-gradient-to-r from-gray-900 via-blue-900 to-slate-900 bg-clip-text text-transparent text-center mb-8 tracking-tight">
-            Projects Manager
-          </h1>
-          
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
-            {SECTIONS.map((sec) => (
-              <button
-                key={sec}
-                onClick={() => {
-                  setCurrentSection(sec);
-                  setMode("list");
-                }}
-                className="group relative bg-white/90 backdrop-blur-xl p-6 sm:p-7 rounded-3xl shadow-lg hover:shadow-2xl hover:scale-[1.02] transition-all duration-300 border border-gray-200/50 hover:border-blue-300 hover:bg-white"
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
-                <div className="relative z-10 text-center">
-                  <div className="w-12 h-12 sm:w-14 sm:h-14 mx-auto mb-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all">
-                    <span className="text-white font-bold text-sm sm:text-base">
-                      {sec.charAt(0)}
-                    </span>
-                  </div>
-                  <h3 className="font-bold text-sm sm:text-base text-gray-900 group-hover:text-blue-600 transition-colors">
-                    {sec}
-                  </h3>
-                  <p className="text-xs text-gray-500 mt-1">View Projects</p>
-                </div>
-              </button>
-            ))}
-          </div>
+         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black bg-gradient-to-r from-gray-900 via-blue-900 to-slate-900 bg-clip-text text-transparent text-center mb-8 tracking-tight">
+           Projects Manager
+         </h1>
+         
+         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
+           {SECTIONS.map((sec) => (
+             <button
+               key={sec}
+               onClick={() => {
+                 setCurrentSection(sec);
+                 setMode("list");
+               }}
+               className="group relative bg-white/90 backdrop-blur-xl p-6 sm:p-7 rounded-3xl shadow-lg hover:shadow-2xl hover:scale-[1.02] transition-all duration-300 border border-gray-200/50 hover:border-blue-300 hover:bg-white"
+             >
+               <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity" />
+               <div className="relative z-10 text-center">
+                 <div className="w-12 h-12 sm:w-14 sm:h-14 mx-auto mb-3 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:shadow-xl transition-all">
+                   <span className="text-white font-bold text-sm sm:text-base">
+                     {sec.charAt(0)}
+                   </span>
+                 </div>
+                 <h3 className="font-bold text-sm sm:text-base text-gray-900 group-hover:text-blue-600 transition-colors">
+                   {sec}
+                 </h3>
+                 <p className="text-xs text-gray-500 mt-1">View Projects</p>
+               </div>
+             </button>
+           ))}
+         </div>
         </div>
       </div>
     );
@@ -200,114 +231,117 @@ const ProjectPage = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-indigo-50 p-4 sm:p-6">
         <div className="max-w-5xl mx-auto space-y-6">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <button
-                onClick={() => setMode("section")}
-                className="inline-flex items-center gap-2 text-sm sm:text-base font-semibold text-gray-700 hover:text-gray-900 transition-colors mb-2 sm:mb-0"
-              >
-                <ArrowLeft size={18} />
-                All Sections
-              </button>
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-gray-900">
-                {currentSection} Projects
-              </h1>
-              <p className="text-sm sm:text-base text-gray-600">
-                {projects.length} project{projects.length !== 1 ? 's' : ''}
-              </p>
-            </div>
-            
-            <button
-              onClick={() => resetForm()}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white px-6 py-3 sm:py-3.5 rounded-2xl font-semibold shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all text-sm sm:text-base min-h-[44px]"
-            >
-              <Plus size={20} />
-              Add New Project
-            </button>
-          </div>
+         {/* Header */}
+         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+           <div>
+             <button
+               onClick={() => setMode("section")}
+               className="inline-flex items-center gap-2 text-sm sm:text-base font-semibold text-gray-700 hover:text-gray-900 transition-colors mb-2 sm:mb-0"
+             >
+               <ArrowLeft size={18} />
+               All Sections
+             </button>
+             <h1 className="text-xl sm:text-2xl lg:text-3xl font-black text-gray-900">
+               {currentSection} Projects
+             </h1>
+             <p className="text-sm sm:text-base text-gray-600">
+               {projects.length} project{projects.length !== 1 ? 's' : ''}
+             </p>
+           </div>
+           
+           <button
+             onClick={() => resetForm()}
+             className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white px-6 py-3 sm:py-3.5 rounded-2xl font-semibold shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all text-sm sm:text-base min-h-[44px]"
+           >
+             <Plus size={20} />
+             Add New Project
+           </button>
+         </div>
 
-          {/* Projects Grid */}
-          {loading ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="animate-pulse bg-white/80 backdrop-blur-xl rounded-2xl p-6 shadow-lg">
-                  <div className="h-32 bg-gray-300 rounded-xl mb-4" />
-                  <div className="h-5 bg-gray-300 rounded-full w-3/4 mb-2" />
-                  <div className="h-4 bg-gray-200 rounded w-1/2 mb-4" />
-                  <div className="flex gap-2">
-                    <div className="h-8 bg-gray-200 rounded-xl flex-1" />
-                    <div className="w-10 h-8 bg-gray-200 rounded-xl" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : projects.length === 0 ? (
-            <div className="text-center py-20 px-6 bg-white/60 backdrop-blur-xl rounded-3xl shadow-xl border border-gray-200/50">
-              <Image className="w-24 h-24 text-gray-300 mx-auto mb-6" />
-              <h3 className="text-2xl font-bold text-gray-800 mb-2">No projects</h3>
-              <p className="text-gray-600 mb-8 max-w-md mx-auto">
-                {/* Create your first {currentSection.toLowerCase()} project to get started. */}
-              </p>
-              <button
-                onClick={() => resetForm()}
-                className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-8 py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transition-all"
-              >
-                <Plus size={20} />
-                Add First Project
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-              {projects.map((project) => (
-                <div
-                  key={project._id}
-                  className="group bg-white/90 backdrop-blur-xl rounded-3xl p-6 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border border-gray-200/50 hover:border-blue-200/50 overflow-hidden"
-                >
-                  {project.images[0] && (
-                    <div className="relative mb-4 h-40 sm:h-48 rounded-2xl overflow-hidden bg-gray-100">
-                      <img
-                        src={`https://construction-backend-wtf2.onrender.com${project.images[0]}`}
-                        alt={project.title}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
-                  )}
-                  
-                  <h3 className="font-bold text-lg sm:text-xl text-gray-900 mb-2 line-clamp-2 leading-tight">
-                    {project.title}
-                  </h3>
-                  
-                  <p className="text-sm text-gray-600 mb-3 line-clamp-2 leading-relaxed">
-                    {project.description}
-                  </p>
-                  
-                  <div className="flex items-center gap-2 text-xs text-gray-500 mb-4">
-                    <MapPin size={14} />
-                    <span className="truncate">{project.location}</span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                    <button
-                      onClick={() => editProject(project)}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all min-h-[40px] flex-1"
-                    >
-                      <Edit size={14} />
-                      Edit
-                    </button>
-                    
-                    <button
-                      onClick={() => handleDelete(project._id!)}
-                      className="p-2.5 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all group/delete"
-                    >
-                      <Trash size={16} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+         {/* Projects Grid */}
+         {loading ? (
+           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+             {[...Array(6)].map((_, i) => (
+               <div key={i} className="animate-pulse bg-white/80 backdrop-blur-xl rounded-2xl p-6 shadow-lg">
+                 <div className="h-32 bg-gray-300 rounded-xl mb-4" />
+                 <div className="h-5 bg-gray-300 rounded-full w-3/4 mb-2" />
+                 <div className="h-4 bg-gray-200 rounded w-1/2 mb-4" />
+                 <div className="flex gap-2">
+                   <div className="h-8 bg-gray-200 rounded-xl flex-1" />
+                   <div className="w-10 h-8 bg-gray-200 rounded-xl" />
+                 </div>
+               </div>
+             ))}
+           </div>
+         ) : projects.length === 0 ? (
+           <div className="text-center py-20 px-6 bg-white/60 backdrop-blur-xl rounded-3xl shadow-xl border border-gray-200/50">
+             <Image className="w-24 h-24 text-gray-300 mx-auto mb-6" />
+             <h3 className="text-2xl font-bold text-gray-800 mb-2">No projects</h3>
+             <p className="text-gray-600 mb-8 max-w-md mx-auto">
+               {/* Create your first {currentSection.toLowerCase()} project to get started. */}
+             </p>
+             <button
+               onClick={() => resetForm()}
+               className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-8 py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transition-all"
+             >
+               <Plus size={20} />
+               Add First Project
+             </button>
+           </div>
+         ) : (
+           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+             {projects.map((project) => (
+               <div
+                 key={project._id}
+                 className="group bg-white/90 backdrop-blur-xl rounded-3xl p-6 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 border border-gray-200/50 hover:border-blue-200/50 overflow-hidden"
+               >
+                 {project.images[0] && (
+                   <div className="relative mb-4 h-40 sm:h-48 rounded-2xl overflow-hidden bg-gray-100">
+                     <img
+                       src={getImageUrl(project.images[0])}
+                       alt={project.title}
+                       onError={(e) => {
+                         e.currentTarget.style.display = 'none';
+                       }}
+                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                     />
+                     <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                   </div>
+                 )}
+                 
+                 <h3 className="font-bold text-lg sm:text-xl text-gray-900 mb-2 line-clamp-2 leading-tight">
+                   {project.title}
+                 </h3>
+                 
+                 <p className="text-sm text-gray-600 mb-3 line-clamp-2 leading-relaxed">
+                   {project.description}
+                 </p>
+                 
+                 <div className="flex items-center gap-2 text-xs text-gray-500 mb-4">
+                   <MapPin size={14} />
+                   <span className="truncate">{project.location}</span>
+                 </div>
+                 
+                 <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                   <button
+                     onClick={() => editProject(project)}
+                     className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all min-h-[40px] flex-1"
+                   >
+                     <Edit size={14} />
+                     Edit
+                   </button>
+                   
+                   <button
+                     onClick={() => handleDelete(project._id!)}
+                     className="p-2.5 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all group/delete"
+                   >
+                     <Trash size={16} />
+                   </button>
+                 </div>
+               </div>
+             ))}
+           </div>
+         )}
         </div>
       </div>
     );
@@ -441,8 +475,11 @@ const ProjectPage = () => {
                   {data.images.map((img, i) => (
                     <div key={i} className="relative group">
                       <img
-                        src={`https://construction-backend-wtf2.onrender.com${img}`}
+                        src={getImageUrl(img)}
                         alt={`Preview ${i + 1}`}
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
                         className="w-full h-28 sm:h-32 object-cover rounded-2xl shadow-md group-hover:shadow-xl transition-all"
                       />
                       <button
